@@ -2,7 +2,7 @@
 /*
 Plugin Name: Cloudflare Cache Manager
 Description: Gerencie configurações de limpeza de cache Cloudflare.
-Version: 1.0
+Version: 2.0
 Author: alfredojry
 Text Domain: cloudflare-cache-manager
 Domain Path: /languages
@@ -16,6 +16,7 @@ define( 'CCM_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 // Hooks
 require_once CCM_PLUGIN_PATH . 'hooks/admin-menu.php';
 require_once CCM_PLUGIN_PATH . 'hooks/save-post.php';
+require_once CCM_PLUGIN_PATH . 'hooks/site-changes.php';
 
 // Callbacks
 require_once CCM_PLUGIN_PATH . 'callbacks/settings-callbacks.php';

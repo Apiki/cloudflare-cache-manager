@@ -6,6 +6,7 @@ $zone_id = get_option('ccm_cloudflare_zone_id', '');
 $api_token = get_option('ccm_cloudflare_api_token', '');
 $debug_error_log = get_option('ccm_debug_error_log', false);
 $debug_woocommerce = get_option('ccm_debug_woocommerce', false);
+$purge_interval = get_option('ccm_purge_interval', 10);
 $wc_installed = class_exists('WooCommerce');
 
 // Variável para armazenar o resultado da limpeza manual
@@ -28,11 +29,13 @@ if (
     $api_token = sanitize_text_field($_POST['ccm_cloudflare_api_token']);
     $debug_error_log = isset($_POST['ccm_debug_error_log']) ? 1 : 0;
     $debug_woocommerce = isset($_POST['ccm_debug_woocommerce']) ? 1 : 0;
+    $purge_interval = absint($_POST['ccm_purge_interval']);
 
     update_option('ccm_cloudflare_zone_id', $zone_id);
     update_option('ccm_cloudflare_api_token', $api_token);
     update_option('ccm_debug_error_log', $debug_error_log);
     update_option('ccm_debug_woocommerce', $debug_woocommerce);
+    update_option('ccm_purge_interval', $purge_interval);
 
     echo '<div class="updated notice"><p>Configurações salvas com sucesso.</p></div>';
 }
@@ -92,6 +95,21 @@ if (
                     <input name="ccm_cloudflare_api_token" type="text" id="ccm_cloudflare_api_token" value="<?php echo esc_attr($api_token); ?>" class="regular-text" />
                 </td>
             </tr>
+        </table>
+
+        <h2>Comportamento</h2>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><label for="ccm_purge_interval">Intervalo mínimo entre purges (segundos)</label></th>
+                <td>
+                    <input name="ccm_purge_interval" type="number" id="ccm_purge_interval" value="<?php echo esc_attr($purge_interval); ?>" class="small-text" min="0" max="300" step="1" />
+                    <p class="description">Evita múltiplas chamadas à API em operações em lote (ex: importação, bulk edit). Valor <code>0</code> desativa o debounce. Padrão: <code>10</code> segundos.</p>
+                </td>
+            </tr>
+        </table>
+
+        <h2>Debug</h2>
+        <table class="form-table">
             <tr>
                 <th scope="row">Debug: error_log()</th>
                 <td>
@@ -115,4 +133,43 @@ if (
         </table>
         <?php submit_button('Salvar configurações'); ?>
     </form>
+
+    <!-- Referência: Hooks monitorados -->
+    <div style="background: #fff; border: 1px solid #ccd0d4; border-radius: 4px; padding: 20px; margin-top: 20px;">
+        <h2 style="margin-top: 0;">Hooks monitorados</h2>
+        <p>O plugin monitora os seguintes eventos do WordPress para disparar a limpeza automática do cache:</p>
+
+        <h3>Conteúdo (Posts / Páginas / CPTs)</h3>
+        <ul style="list-style: disc; padding-left: 20px;">
+            <li><code>publish_post</code> / <code>publish_page</code> &mdash; Publicação imediata</li>
+            <li><code>future_to_publish</code> &mdash; Agendamento publicado</li>
+            <li><code>wp_trash_post</code> &mdash; Enviado para lixeira</li>
+            <li><code>delete_post</code> &mdash; Excluído permanentemente</li>
+            <li><code>clean_post_cache</code> &mdash; Cache interno do WP limpo</li>
+            <li><code>wp_update_comment_count</code> &mdash; Comentário adicionado/removido</li>
+            <li><code>pre_post_update</code> &mdash; Mudança de status (publish &rarr; draft) e slug alterado</li>
+            <li><code>transition_post_status</code> &mdash; Transições genéricas de status</li>
+        </ul>
+
+        <h3>Configurações do Site</h3>
+        <ul style="list-style: disc; padding-left: 20px;">
+            <li><code>switch_theme</code> &mdash; Tema alterado</li>
+            <li><code>upgrader_process_complete</code> &mdash; Tema/plugin atualizado</li>
+            <li><code>wp_update_nav_menu</code> &mdash; Menu de navegação</li>
+            <li><code>update_option_sidebars_widgets</code> / <code>widget_update_callback</code> &mdash; Widgets</li>
+            <li><code>customize_save</code> &mdash; Customizer salvo</li>
+            <li><code>permalink_structure_changed</code> / <code>update_option_category_base</code> / <code>update_option_tag_base</code> &mdash; Permalinks</li>
+            <li><code>update_option_blog_public</code> &mdash; Visibilidade do site</li>
+        </ul>
+
+        <h3>Taxonomias / Termos</h3>
+        <ul style="list-style: disc; padding-left: 20px;">
+            <li><code>create_term</code> / <code>edit_term</code> / <code>delete_term</code> &mdash; Apenas taxonomias públicas</li>
+        </ul>
+
+        <h3>Usuários</h3>
+        <ul style="list-style: disc; padding-left: 20px;">
+            <li><code>profile_update</code> / <code>delete_user</code> / <code>user_register</code></li>
+        </ul>
+    </div>
 </div>
