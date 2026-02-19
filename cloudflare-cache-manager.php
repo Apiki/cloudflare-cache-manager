@@ -23,6 +23,7 @@ require_once CCM_PLUGIN_PATH . 'callbacks/settings-callbacks.php';
 
 // Lógica
 require_once CCM_PLUGIN_PATH . 'logic/cloudflare-cache.php';
+require_once CCM_PLUGIN_PATH . 'logic/url-collector.php';
 
 // As views são carregadas via callbacks
 

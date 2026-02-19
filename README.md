@@ -1,20 +1,32 @@
 # Cloudflare Cache Manager
 
-Plugin WordPress para gerenciamento automático e manual de limpeza de cache na Cloudflare.
+Plugin WordPress para gerenciamento inteligente de limpeza de cache na Cloudflare, com **purga granular por URLs** para eventos de conteúdo e `purge_everything` apenas para alterações estruturais do site.
 
 ## O que faz
 
-- **Purga automática** de todo o cache da Cloudflare em **30+ eventos** do WordPress (posts, páginas, CPTs, comentários, menus, widgets, taxonomias, temas, permalinks, usuários e mais).
-- **Purga manual** via botão no painel administrativo, com feedback detalhado da operação.
-- **Debounce inteligente** — evita múltiplas chamadas à API em operações em lote (importações, bulk edit, etc.).
-- **Debug configurável** via `error_log()` do PHP e/ou logger do WooCommerce.
+- **Purga seletiva por URLs** — ao editar/publicar um post, apenas as URLs relacionadas são invalidadas (permalink, home, feeds, taxonomias, autor, paginação, etc.). O restante do cache permanece intacto.
+- **Purge Everything** somente para alterações globais (tema, menus, widgets, permalinks, etc.).
+- **Purga manual** via botão no painel administrativo, com feedback detalhado.
+- **Debounce inteligente** — evita chamadas excessivas à API em operações em lote.
+- **Debug configurável** via `error_log()` e/ou WooCommerce Logger.
+- **Filter hook** `ccm_post_purge_urls` para personalizar a lista de URLs purgadas.
+
+## Por que purga granular?
+
+Em portais com alto tráfego, um `purge_everything` a cada edição de post pode causar:
+
+- **Indisponibilidade momentânea** — todas as páginas perdem cache simultaneamente
+- **Sobrecarga no servidor** — milhares de visitantes simultâneos batem no origin
+- **Tempo de re-cache elevado** — até o Cloudflare recachear, a performance cai
+
+Com purga seletiva, apenas as URLs afetadas pelo post editado são invalidadas (~15-40 URLs), preservando o cache de todo o restante do site.
 
 ## Requisitos
 
 - WordPress 5.0+
 - PHP 7.4+
-- Conta Cloudflare com **API Token** que possua permissão de **Zone > Cache Purge > Purge**
-- *(Opcional)* WooCommerce — para usar o canal de debug via WC Logger
+- Conta Cloudflare com **API Token** com permissão de **Zone > Cache Purge > Purge**
+- *(Opcional)* WooCommerce — para debug via WC Logger
 
 ## Instalação
 
@@ -28,104 +40,143 @@ Plugin WordPress para gerenciamento automático e manual de limpeza de cache na 
 
 | Campo | Descrição |
 |---|---|
-| **Zone ID** | Identificador da zona no Cloudflare. Encontrado em *Overview* do domínio no painel Cloudflare. |
-| **API Token** | Token de API com permissão de purge. Crie em *My Profile > API Tokens* no painel Cloudflare. |
-| **Intervalo mínimo entre purges** | Tempo em segundos de debounce entre chamadas à API (padrão: 10s). Valor `0` desativa. |
-| **Debug: error_log()** | Grava logs de cada purge no `error_log` do PHP. |
-| **Debug: WooCommerce** | Grava logs no WooCommerce Logger. Só funciona se o WooCommerce estiver ativo. |
+| **Zone ID** | Identificador da zona no Cloudflare. |
+| **API Token** | Token de API com permissão de purge. |
+| **Intervalo mínimo entre purges** | Debounce em segundos (padrão: 10s). Valor `0` desativa. |
+| **Debug: error_log()** | Grava logs de cada purge no log do PHP. |
+| **Debug: WooCommerce** | Grava logs no WooCommerce Logger. |
+
+## Como funciona
+
+### Purga seletiva (eventos de conteúdo)
+
+Quando um post é publicado/editado/excluído, o plugin coleta todas as URLs relacionadas:
+
+| URL coletada | Descrição |
+|---|---|
+| Permalink do post | URL principal |
+| Home page | Página inicial |
+| Página de posts | Se usar front page estática |
+| Paginação | Até 3 páginas da home |
+| Taxonomias | Links de categorias, tags e custom taxonomies (+ ancestrais) |
+| Feeds de taxonomias | RSS/Atom de cada termo |
+| Página do autor | URL + feed do autor |
+| Archive do CPT | Se for custom post type |
+| Feeds globais | RSS2, Atom, RDF, RSS, comentários |
+| Feed do post | Feed de comentários do post |
+| Posts adjacentes | Anterior e próximo |
+| Posts ancestrais | Para páginas hierárquicas |
+| Archives de datas | Ano, mês e dia |
+| AMP | Se o plugin AMP estiver ativo |
+
+As URLs são enviadas à API da Cloudflare em **lotes de 30** (limite da API por request).
+
+### Purge Everything (eventos globais)
+
+Apenas alterações estruturais do site disparam purge total:
+
+- Tema alterado/atualizado
+- Menu de navegação editado
+- Widgets alterados
+- Customizer salvo
+- Estrutura de permalinks alterada
+- Visibilidade do site alterada
+- Termos de taxonomia criados/editados/excluídos
+- Usuários criados/editados/excluídos
+
+### Purga manual
+
+O botão "Limpar Cache Agora" na página de configurações sempre faz `purge_everything`.
 
 ## Hooks monitorados
 
-O plugin monitora todos os eventos abaixo e dispara `purge_everything` na Cloudflare.
-
-### Conteúdo (Posts / Páginas / Custom Post Types)
+### Conteúdo → Purga seletiva por URLs
 
 | Hook | Quando dispara |
 |---|---|
-| `publish_post` / `publish_page` | Post ou página publicado imediatamente |
-| `future_to_publish` | Post agendado publicado pelo cron |
-| `wp_trash_post` | Post enviado para a lixeira |
+| `publish_post` / `publish_page` | Post ou página publicado |
+| `future_to_publish` | Post agendado publicado |
+| `wp_trash_post` | Post enviado para lixeira |
 | `delete_post` | Post excluído permanentemente |
-| `clean_post_cache` | Cache interno do WordPress limpo (cobre `save_post`, `edit_post`, etc.) |
-| `wp_update_comment_count` | Comentário adicionado, aprovado ou removido |
-| `pre_post_update` (status) | Post alterado de publicado para rascunho |
-| `pre_post_update` (slug) | Slug/permalink do post alterado |
-| `transition_post_status` | Qualquer transição de status envolvendo `publish` (cobre CPTs) |
+| `delete_attachment` | Attachment excluído/re-uploadado |
+| `clean_post_cache` | Cache interno do WP limpo |
+| `transition_post_status` | Transições de status envolvendo publish |
+| `pre_post_update` | Mudança publish→draft e alteração de slug |
+| `comment_post` | Novo comentário aprovado |
+| `transition_comment_status` | Status de comentário alterado |
+| `wp_update_comment_count` | Contagem de comentários atualizada |
 
-> Apenas post types **públicos** disparam a purga. Revisões, auto-drafts, `nav_menu_item` e `attachment` são ignorados.
-
-### Configurações do Site
+### Configurações do site → Purge Everything
 
 | Hook | Quando dispara |
 |---|---|
 | `switch_theme` | Tema ativado |
-| `upgrader_process_complete` | Tema ativo ou plugin atualizado |
-| `wp_update_nav_menu` | Menu de navegação criado ou editado |
-| `update_option_sidebars_widgets` | Ordem dos widgets alterada |
-| `widget_update_callback` | Widget individual atualizado |
-| `customize_save` | Customizer salvo |
-| `update_option_theme_mods_{stylesheet}` | Localização de menus alterada |
-| `permalink_structure_changed` | Estrutura de permalinks alterada |
-| `update_option_category_base` | Base de URL de categorias alterada |
-| `update_option_tag_base` | Base de URL de tags alterada |
-| `update_option_blog_public` | Visibilidade do site alterada |
-| `add_link` / `edit_link` / `delete_link` | Blogroll (links) alterado |
+| `upgrader_process_complete` | Tema/plugin atualizado |
+| `wp_update_nav_menu` | Menu de navegação |
+| `update_option_sidebars_widgets` / `widget_update_callback` | Widgets |
+| `customize_save` / `customize_save_after` | Customizer |
+| `permalink_structure_changed` / `update_option_category_base` / `update_option_tag_base` | Permalinks |
+| `update_option_blog_public` | Visibilidade do site |
+| `create_term` / `edit_term` / `delete_term` | Taxonomias públicas |
+| `add_link` / `edit_link` / `delete_link` | Blogroll |
+| `profile_update` / `delete_user` / `user_register` | Usuários |
 
-### Taxonomias / Termos
+## Personalizando URLs purgadas
 
-| Hook | Quando dispara |
-|---|---|
-| `create_term` | Termo criado em taxonomia pública |
-| `edit_term` | Termo editado em taxonomia pública |
-| `delete_term` | Termo excluído de taxonomia pública |
+Use o filter `ccm_post_purge_urls` para adicionar ou remover URLs da lista:
 
-### Usuários
+```php
+add_filter( 'ccm_post_purge_urls', function( $urls, $post_id ) {
+    // Adicionar URL customizada
+    $urls[] = home_url( '/minha-pagina-especial/' );
 
-| Hook | Quando dispara |
-|---|---|
-| `profile_update` | Perfil de usuário atualizado |
-| `delete_user` | Usuário excluído |
-| `user_register` | Novo usuário registrado |
+    // Remover feeds da lista
+    $urls = array_filter( $urls, function( $url ) {
+        return strpos( $url, '/feed/' ) === false;
+    } );
 
-## Mecanismo de Debounce
-
-Para evitar dezenas de chamadas à API em operações como importação de conteúdo ou edição em lote, o plugin utiliza um **transient do WordPress** como mecanismo de debounce:
-
-1. Ao disparar a primeira purga, um transient `ccm_purge_throttle` é criado com TTL configurável (padrão: 10 segundos).
-2. Qualquer purga subsequente dentro desse intervalo é ignorada (e logada no debug como "debounce ativo").
-3. Após o TTL expirar, a próxima purga é executada normalmente.
-
-O intervalo é configurável em **Configurações > Cloudflare Cache Manager > Intervalo mínimo entre purges**.
+    return $urls;
+}, 10, 2 );
+```
 
 ## Estrutura do projeto
 
 ```
 cloudflare-cache-manager/
-├── cloudflare-cache-manager.php   # Arquivo principal (bootstrap)
+├── cloudflare-cache-manager.php   # Bootstrap e link de settings
 ├── hooks/
-│   ├── admin-menu.php             # Registro do submenu em Configurações
-│   ├── save-post.php              # Hooks de conteúdo (post/page/CPT/comment)
-│   └── site-changes.php           # Hooks globais (tema/menu/widget/permalink/term/user)
+│   ├── admin-menu.php             # Registro do submenu
+│   ├── save-post.php              # Hooks de conteúdo → purga seletiva
+│   └── site-changes.php           # Hooks globais → purge_everything
 ├── callbacks/
-│   └── settings-callbacks.php     # Callback de renderização da página
+│   └── settings-callbacks.php     # Callback de renderização
 ├── logic/
-│   └── cloudflare-cache.php       # API Cloudflare, debounce e debug
+│   ├── cloudflare-cache.php       # API: purge_everything, purge por URLs, debug
+│   └── url-collector.php          # Coleta URLs relacionadas a um post
 └── views/
-    └── settings-form.php          # Template da página de configurações
+    └── settings-form.php          # Página de configurações
 ```
 
 ## Criando o API Token na Cloudflare
 
 1. Acesse [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens).
 2. Clique em **Create Token**.
-3. Use o template **Custom token** com as seguintes permissões:
+3. Use o template **Custom token**:
    - **Zone > Cache Purge > Purge**
 4. Em **Zone Resources**, selecione a zona desejada.
 5. Copie o token gerado e cole no campo **API Token** do plugin.
 
+## Limites da API Cloudflare
+
+| Operação | Limite |
+|---|---|
+| `purge_everything` | 1.000 requests / 5 min / zona |
+| Purge por URLs (`files`) | 30 URLs por request |
+
+Com o debounce de 10s, o máximo de `purge_everything` é ~30 req/5min.
+
 ## Observações
 
-- O plugin sempre faz **purge total** (`purge_everything`). Não há opção de purgar URLs específicas.
 - A autenticação utiliza **Bearer Token** (API Token), não a Global API Key.
-- As credenciais são armazenadas na tabela `wp_options` do WordPress.
-- O plugin foi inspirado no mapeamento de hooks do **WP Rocket** para garantir cobertura completa dos eventos do WordPress.
+- As credenciais são armazenadas na tabela `wp_options`.
+- Inspirado nos hooks do **WP Rocket** e do **plugin oficial Cloudflare** (v4.14.2).

@@ -145,10 +145,17 @@ if (
             <li><code>future_to_publish</code> &mdash; Agendamento publicado</li>
             <li><code>wp_trash_post</code> &mdash; Enviado para lixeira</li>
             <li><code>delete_post</code> &mdash; Excluído permanentemente</li>
+            <li><code>delete_attachment</code> &mdash; Attachment excluído ou re-uploadado</li>
             <li><code>clean_post_cache</code> &mdash; Cache interno do WP limpo</li>
-            <li><code>wp_update_comment_count</code> &mdash; Comentário adicionado/removido</li>
-            <li><code>pre_post_update</code> &mdash; Mudança de status (publish &rarr; draft) e slug alterado</li>
             <li><code>transition_post_status</code> &mdash; Transições genéricas de status</li>
+            <li><code>pre_post_update</code> &mdash; Mudança de status (publish &rarr; draft) e slug alterado</li>
+        </ul>
+
+        <h3>Comentários</h3>
+        <ul style="list-style: disc; padding-left: 20px;">
+            <li><code>comment_post</code> &mdash; Novo comentário aprovado</li>
+            <li><code>transition_comment_status</code> &mdash; Status de comentário alterado (aprovado &harr; pendente/spam)</li>
+            <li><code>wp_update_comment_count</code> &mdash; Contagem de comentários atualizada</li>
         </ul>
 
         <h3>Configurações do Site</h3>
@@ -157,7 +164,7 @@ if (
             <li><code>upgrader_process_complete</code> &mdash; Tema/plugin atualizado</li>
             <li><code>wp_update_nav_menu</code> &mdash; Menu de navegação</li>
             <li><code>update_option_sidebars_widgets</code> / <code>widget_update_callback</code> &mdash; Widgets</li>
-            <li><code>customize_save</code> &mdash; Customizer salvo</li>
+            <li><code>customize_save</code> / <code>customize_save_after</code> &mdash; Customizer salvo</li>
             <li><code>permalink_structure_changed</code> / <code>update_option_category_base</code> / <code>update_option_tag_base</code> &mdash; Permalinks</li>
             <li><code>update_option_blog_public</code> &mdash; Visibilidade do site</li>
         </ul>

@@ -2,11 +2,11 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * Hooks de alterações globais do site — disparam purge do Cloudflare quando
- * configurações estruturais do WordPress são alteradas.
+ * Hooks de alterações globais do site — disparam purge_everything no Cloudflare
+ * quando configurações estruturais do WordPress são alteradas.
  *
- * Inspirado no mapeamento de hooks do WP Rocket (inc/common/purge.php
- * e inc/Engine/Cache/PurgeActionsSubscriber.php).
+ * Estes eventos afetam o site inteiro (tema, menu, widgets, permalink, etc.),
+ * portanto purge_everything é justificado aqui.
  */
 
 // ─── Tema ──────────────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ add_filter( 'widget_update_callback', 'ccm_on_widget_update' );
 
 // ─── Customizer ────────────────────────────────────────────────────────────────
 add_action( 'customize_save', 'ccm_on_site_change_generic' );
+add_action( 'customize_save_after', 'ccm_on_site_change_generic' );
 
 // ─── Theme Mods (localização de menus, header, etc.) ──────────────────────────
 add_action( 'update_option_theme_mods_' . get_option( 'stylesheet' ), 'ccm_on_theme_mods_change' );
@@ -60,7 +61,7 @@ add_action( 'user_register', 'ccm_on_user_change' );
  */
 function ccm_on_site_change_generic() {
     $trigger = current_filter();
-    ccm_purge_cloudflare_cache( null, $trigger );
+    ccm_purge_everything( $trigger );
 }
 
 /**
@@ -70,7 +71,7 @@ function ccm_on_site_change_generic() {
  * @return array
  */
 function ccm_on_widget_update( $instance ) {
-    ccm_purge_cloudflare_cache( null, 'widget_update_callback' );
+    ccm_purge_everything( 'widget_update_callback' );
     return $instance;
 }
 
@@ -78,7 +79,7 @@ function ccm_on_widget_update( $instance ) {
  * Purga quando theme_mods são alterados (localização de menus, etc.).
  */
 function ccm_on_theme_mods_change() {
-    ccm_purge_cloudflare_cache( null, 'update_option_theme_mods' );
+    ccm_purge_everything( 'update_option_theme_mods' );
 }
 
 /**
@@ -93,7 +94,7 @@ function ccm_on_term_change( $term_id, $tt_id, $taxonomy ) {
     if ( false === $tax_obj || ! $tax_obj->public ) return;
 
     $trigger = current_filter();
-    ccm_purge_cloudflare_cache( null, $trigger );
+    ccm_purge_everything( $trigger );
 }
 
 /**
@@ -101,7 +102,7 @@ function ccm_on_term_change( $term_id, $tt_id, $taxonomy ) {
  */
 function ccm_on_user_change() {
     $trigger = current_filter();
-    ccm_purge_cloudflare_cache( null, $trigger );
+    ccm_purge_everything( $trigger );
 }
 
 /**
@@ -130,5 +131,5 @@ function ccm_on_theme_or_plugin_update( $upgrader, $hook_extra ) {
         // Qualquer plugin atualizado pode afetar o front-end
     }
 
-    ccm_purge_cloudflare_cache( null, 'upgrader_process_complete' );
+    ccm_purge_everything( 'upgrader_process_complete' );
 }
