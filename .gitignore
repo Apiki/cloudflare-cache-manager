@@ -1,0 +1,39 @@
+# Dependencies
+vendor/
+node_modules/
+
+# Build
+dist/
+build/
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+error_log
+debug.log
+
+# WordPress
+wp-config.php
+wp-content/uploads/
+
+# Environment
+.env
+.env.*
+
+# Composer
+composer.lock
+
+# npm / yarn
+package-lock.json
+yarn.lock
