@@ -30,11 +30,131 @@ Com purga seletiva, apenas as URLs afetadas pelo post editado são invalidadas (
 
 ## Instalação
 
-1. Clone ou copie a pasta `cloudflare-cache-manager` para `wp-content/plugins/`.
+### Como plugin normal
+
+1. Copie a pasta `cloudflare-cache-manager/` para `wp-content/plugins/`.
 2. Ative o plugin no painel **Plugins** do WordPress.
 3. Acesse **Configurações > Cloudflare Cache Manager**.
 4. Preencha o **Zone ID** e o **API Token** da Cloudflare.
 5. Salve as configurações.
+
+### Como Must-Use plugin (mu-plugin)
+
+1. Copie a pasta `cloudflare-cache-manager/` para `wp-content/mu-plugins/cloudflare-cache-manager/`.
+2. Copie o arquivo `ccm-loader.php` para `wp-content/mu-plugins/ccm-loader.php`.
+3. Acesse **Configurações > Cloudflare Cache Manager** para configurar.
+
+```
+wp-content/mu-plugins/
+├── ccm-loader.php                         ← loader (carrega o plugin)
+└── cloudflare-cache-manager/              ← pasta do plugin
+    ├── cloudflare-cache-manager.php
+    ├── hooks/
+    ├── logic/
+    ├── callbacks/
+    └── views/
+```
+
+> MU plugins são carregados automaticamente e não podem ser desativados pelo painel.
+> Se as credenciais não estiverem configuradas, um aviso aparecerá no admin.
+
+## WP-CLI
+
+O plugin registra o comando `wp ccm` com os seguintes subcomandos:
+
+### `wp ccm purge`
+
+Purga todo o cache da zona (purge_everything). Pede confirmação antes de executar.
+
+```bash
+wp ccm purge
+
+# Sem confirmação (útil em scripts/cron)
+wp ccm purge --yes
+```
+
+### `wp ccm purge --post=<id>`
+
+Purga apenas as URLs relacionadas a um post específico (granular).
+
+```bash
+wp ccm purge --post=42
+```
+
+### `wp ccm urls <post_id>`
+
+Lista todas as URLs que seriam purgadas para um post (**dry-run** — não envia nada à Cloudflare).
+
+```bash
+wp ccm urls 42
+
+# Exportar como JSON
+wp ccm urls 42 --format=json
+```
+
+### `wp ccm config`
+
+Gerencia as configurações do plugin diretamente pelo terminal.
+
+```bash
+# Configurar credenciais
+wp ccm config set zone_id abc123def456
+wp ccm config set api_token cftoken_xxxxx
+
+# Ajustar debounce
+wp ccm config set purge_interval 30
+
+# Ativar/desativar debug
+wp ccm config set debug_error_log on
+wp ccm config set debug_woocommerce off
+
+# Ver um valor específico
+wp ccm config get zone_id
+wp ccm config get zone_id --reveal
+
+# Listar todas as configurações
+wp ccm config list
+wp ccm config list --reveal
+wp ccm config list --format=json
+
+# Resetar tudo para os padrões
+wp ccm config reset
+```
+
+Chaves disponíveis:
+
+| Chave | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `zone_id` | string | (vazio) | Zone ID da Cloudflare |
+| `api_token` | string | (vazio) | API Token da Cloudflare |
+| `purge_interval` | int | 10 | Debounce em segundos |
+| `debug_error_log` | bool | off | Debug via `error_log()` |
+| `debug_woocommerce` | bool | off | Debug via WC Logger |
+
+> Campos sensíveis (`zone_id`, `api_token`) são mascarados por padrão. Use `--reveal` para exibir o valor real.
+
+### `wp ccm status`
+
+Exibe a configuração atual do plugin e testa conectividade com a API da Cloudflare.
+
+```bash
+wp ccm status
+```
+
+Saída exemplo:
+
+```
+  Configuração              Valor
+  ──────────────────────────────────────────────────
+  Modo de instalação        Must-Use plugin
+  Zone ID                   a1b2••••••••••••y3z4
+  API Token                 cfpk••••••••••••abcd
+  Debounce (segundos)       10
+  Debug error_log           Ativado
+  Debug WooCommerce         Desativado
+
+  ✔ Conectado! Zona: meusite.com.br (status: active)
+```
 
 ## Configurações
 
@@ -143,18 +263,21 @@ add_filter( 'ccm_post_purge_urls', function( $urls, $post_id ) {
 
 ```
 cloudflare-cache-manager/
-├── cloudflare-cache-manager.php   # Bootstrap e link de settings
+├── cloudflare-cache-manager.php   # Bootstrap, constantes e loader de módulos
+├── ccm-loader.php                 # Loader para instalação como MU plugin
 ├── hooks/
-│   ├── admin-menu.php             # Registro do submenu
-│   ├── save-post.php              # Hooks de conteúdo → purga seletiva
+│   ├── admin-menu.php             # Registro do submenu em Configurações
+│   ├── save-post.php              # Hooks de conteúdo → purga seletiva por URLs
 │   └── site-changes.php           # Hooks globais → purge_everything
 ├── callbacks/
-│   └── settings-callbacks.php     # Callback de renderização
+│   └── settings-callbacks.php     # Callback de renderização da página
 ├── logic/
-│   ├── cloudflare-cache.php       # API: purge_everything, purge por URLs, debug
+│   ├── cloudflare-cache.php       # API Cloudflare: purge_everything, purge por URLs, debug
 │   └── url-collector.php          # Coleta URLs relacionadas a um post
+├── cli/
+│   └── class-ccm-cli.php         # Comandos WP-CLI (wp ccm purge/urls/status)
 └── views/
-    └── settings-form.php          # Página de configurações
+    └── settings-form.php          # Página de configurações no admin
 ```
 
 ## Criando o API Token na Cloudflare
