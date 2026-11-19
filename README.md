@@ -165,6 +165,17 @@ Saída exemplo:
 | **Intervalo mínimo entre purges** | Debounce em segundos (padrão: 10s). Valor `0` desativa. |
 | **Debug: error_log()** | Grava logs de cada purge no log do PHP. |
 | **Debug: WooCommerce** | Grava logs no WooCommerce Logger. |
+| **Modo de purga seletiva** (`ccm_purge_mode`) | `files` (padrão) ou `prefixes`. Ver abaixo. Definido por `wp option update ccm_purge_mode prefixes`. |
+
+#### Modo `prefixes`
+
+Em algumas zonas a purga por URL (`files`) retorna `success: true` mas não remove o objeto do cache (observado em zona Free, 2026-11-19), enquanto `prefixes` e `hosts` removem. Nesses casos, defina `ccm_purge_mode` como `prefixes`:
+
+- cada URL vira um prefixo `host/caminho`, sem esquema e sem query string;
+- se a lista contém a home (`/`), o prefixo equivale ao host inteiro, então é enviado um único purge por `hosts` (sujeito ao debounce de `ccm_purge_interval`);
+- vale para os hooks de conteúdo e para `wp ccm purge --post=<id>`.
+
+Para voltar ao comportamento anterior: `wp option update ccm_purge_mode files`.
 
 ## Como funciona
 

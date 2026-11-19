@@ -79,11 +79,11 @@ class CCM_CLI extends WP_CLI_Command {
             $zone_id  = get_option( 'ccm_cloudflare_zone_id', '' );
             $endpoint = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
             $headers  = ccm_get_api_headers();
-            $chunks   = array_chunk( $urls, 30 );
+            $chunks   = ccm_build_purge_payloads( $urls, get_option( 'ccm_purge_mode', 'files' ) );
             $errors   = 0;
 
             foreach ( $chunks as $index => $chunk ) {
-                $body     = wp_json_encode( array( 'files' => array_values( $chunk ) ) );
+                $body     = wp_json_encode( $chunk );
                 $response = wp_remote_post( $endpoint, array(
                     'headers' => $headers,
                     'body'    => $body,
@@ -102,7 +102,7 @@ class CCM_CLI extends WP_CLI_Command {
                 $success = isset( $data['success'] ) && $data['success'];
 
                 if ( $success ) {
-                    WP_CLI::log( "  Lote {$batch}/" . count( $chunks ) . ": OK (" . count( $chunk ) . " URLs)" );
+                    WP_CLI::log( "  Lote {$batch}/" . count( $chunks ) . ": OK " . wp_json_encode( $chunk ) );
                 } else {
                     $msg = isset( $data['errors'][0]['message'] ) ? $data['errors'][0]['message'] : 'resposta inesperada';
                     WP_CLI::warning( "Lote {$batch}: falhou — {$msg}" );

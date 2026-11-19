@@ -122,6 +122,56 @@ function ccm_debug_log( $message ) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Monta os corpos de requisição de purge a partir de uma lista de URLs.
+ *
+ * Modo 'files' (padrão): purge por URL, lotes de 30.
+ * Modo 'prefixes': usado quando o purge por URL não evicta o cache da zona
+ * (observado em zona Free, 2026-11-19: 'files' retorna success mas mantém o objeto;
+ * 'prefixes' e 'hosts' evictam). Cada URL vira prefixo "host/caminho" (sem esquema e
+ * sem query). Se a lista contém a raiz ("/"), o prefixo equivale ao host inteiro, então
+ * envia um único purge por 'hosts'.
+ *
+ * @param string[] $urls URLs absolutas.
+ * @param string   $mode 'files' ou 'prefixes'.
+ * @return array[] Lista de corpos (arrays) prontos para wp_json_encode().
+ */
+function ccm_build_purge_payloads( $urls, $mode = 'files' ) {
+    if ( 'prefixes' !== $mode ) {
+        $payloads = array();
+        foreach ( array_chunk( $urls, 30 ) as $chunk ) {
+            $payloads[] = array( 'files' => array_values( $chunk ) );
+        }
+        return $payloads;
+    }
+
+    $hosts    = array();
+    $prefixes = array();
+
+    foreach ( $urls as $url ) {
+        $parts = wp_parse_url( $url );
+        if ( empty( $parts['host'] ) ) {
+            continue;
+        }
+        $path = isset( $parts['path'] ) ? $parts['path'] : '/';
+        if ( '/' === $path ) {
+            $hosts[ $parts['host'] ] = true;
+            continue;
+        }
+        $prefixes[] = $parts['host'] . $path;
+    }
+
+    if ( ! empty( $hosts ) ) {
+        return array( array( 'hosts' => array_keys( $hosts ) ) );
+    }
+
+    $payloads = array();
+    foreach ( array_chunk( array_values( array_unique( $prefixes ) ), 30 ) as $chunk ) {
+        $payloads[] = array( 'prefixes' => $chunk );
+    }
+    return $payloads;
+}
+
+/**
  * Purga URLs específicas no cache da Cloudflare.
  * Envia em lotes de 30 URLs (limite da API).
  *
@@ -162,14 +212,21 @@ function ccm_purge_post_urls( $post_id, $trigger = '' ) {
     $endpoint = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
     $headers  = ccm_get_api_headers();
 
-    $chunks     = array_chunk( $urls, 30 );
+    $purge_mode = get_option( 'ccm_purge_mode', 'files' );
+    $chunks     = ccm_build_purge_payloads( $urls, $purge_mode );
     $all_ok     = true;
     $total_urls = count( $urls );
 
-    ccm_debug_log( "[CCM Cloudflare] Purge seletiva | Post ID: {$post_id} | Ação: {$trigger_text} | {$total_urls} URLs em " . count( $chunks ) . " lote(s)" );
+    // Modo 'prefixes': a home vira purge do host inteiro; aplica o debounce de 'urls'.
+    if ( 'prefixes' === $purge_mode && isset( $chunks[0]['hosts'] ) && ccm_should_throttle_purge( 'urls' ) ) {
+        ccm_debug_log( '[CCM Cloudflare] Purge de host ignorada (debounce ativo) | Post ID: ' . $post_id . ' | Ação: ' . $trigger_text );
+        return false;
+    }
+
+    ccm_debug_log( "[CCM Cloudflare] Purge seletiva ({$purge_mode}) | Post ID: {$post_id} | Ação: {$trigger_text} | {$total_urls} URLs em " . count( $chunks ) . " lote(s)" );
 
     foreach ( $chunks as $index => $chunk ) {
-        $body = wp_json_encode( array( 'files' => array_values( $chunk ) ) );
+        $body = wp_json_encode( $chunk );
 
         $response = wp_remote_post( $endpoint, array(
             'headers' => $headers,
@@ -198,7 +255,7 @@ function ccm_purge_post_urls( $post_id, $trigger = '' ) {
             }
             ccm_debug_log( "[CCM Cloudflare] Lote {$batch_num} FALHOU | Código: {$code} | Erro: {$error_msg}" );
         } else {
-            ccm_debug_log( "[CCM Cloudflare] Lote {$batch_num} OK | " . count( $chunk ) . " URLs purgadas" );
+            ccm_debug_log( "[CCM Cloudflare] Lote {$batch_num} OK | " . wp_json_encode( $chunk ) );
         }
     }
 
